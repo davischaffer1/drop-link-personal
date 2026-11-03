@@ -6,48 +6,33 @@ const TURN_USERNAME = 'b242b17e7d5844080bae03c1';
 const TURN_CREDENTIAL = '/yHaPX1MB6uxiq7c';
 
 const peerConfig = {
-  host: '0.peerjs.com',
+  // 👇 Trocamos o servidor de sinalização para um mais rápido e estável
+  host: 'peerjs-server.fly.dev', 
   port: 443,
   secure: true,
   path: '/',
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      // TURN da Metered (Muito mais confiável para 4G/5G)
       {
-        urls: 'turn:global.relay.metered.ca:80',
-        username: TURN_USERNAME,
-        credential: TURN_CREDENTIAL,
-      },
-      {
-        urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-        username: TURN_USERNAME,
-        credential: TURN_CREDENTIAL,
-      },
-      {
-        urls: 'turn:global.relay.metered.ca:443',
-        username: TURN_USERNAME,
-        credential: TURN_CREDENTIAL,
-      },
-      {
-        urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+        urls: [
+          'turn:global.relay.metered.ca:80',
+          'turn:global.relay.metered.ca:443',
+          'turns:global.relay.metered.ca:443?transport=tcp'
+        ],
         username: TURN_USERNAME,
         credential: TURN_CREDENTIAL,
       },
     ],
+    // Obriga o tráfego a passar pelo TURN se a conexão P2P falhar
+    iceTransportPolicy: 'relay',
   },
   debug: 1,
 };
 
 const peer = new Peer(peerConfig);
 
-const bc =
-  typeof BroadcastChannel !== 'undefined'
-    ? new BroadcastChannel('droplink-lan')
-    : null;
-
+const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('droplink-lan') : null;
 let peerIdCallback = null;
 let incomingConnectionCallback = null;
 let localPeerCallback = null;
@@ -58,7 +43,7 @@ function initOnce() {
   initialized = true;
 
   peer.on('open', (id) => {
-    console.log('Conectado ao servidor com ID:', id);
+    console.log('%cConectado ao servidor PeerJS (fly.dev) com ID: ' + id, 'color: green; font-weight: bold;');
     if (peerIdCallback) peerIdCallback(id);
     if (bc) bc.postMessage({ type: 'hello', id });
   });
@@ -89,14 +74,12 @@ export const getPeerId = (callback) => {
 export const connectToPeer = (remotePeerId) => {
   const conn = peer.connect(remotePeerId, { reliable: true });
   
+  // Timeout aumentado para 25s para dar tempo do TURN responder
   const timeout = setTimeout(() => {
-    if (!conn.open) {
-      conn.close();
-    }
-  }, 20000); // Aumentei para 20s, pois o TURN pode demorar um pouco na primeira vez
+    if (!conn.open) conn.close();
+  }, 25000);
 
   conn.on('open', () => clearTimeout(timeout));
-  
   return conn;
 };
 
