@@ -1,32 +1,26 @@
 // src/peerService.js
 import Peer from 'peerjs';
 
-// Servidores públicos (STUN e TURN) para furar bloqueios de operadoras e Wi-Fi
 const peerConfig = {
+  // 👇 Trocamos o host padrão pelo Cloudflare (mais rápido e não bloqueia celular)
+  host: '0.peerjs.com',
+  port: 443,
+  secure: true,
+  path: '/',
+  // Servidores para furar bloqueios de rede (NAT)
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
       {
         urls: 'turn:openrelay.metered.ca:80',
         username: 'openrelayproject',
         credential: 'openrelayproject',
       },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
     ],
   },
-  debug: 0,
-  // 👇 AQUI ESTÁ A MÁGICA: Usando o servidor do PeerJS no Google Cloud (mais rápido e estável)
-  host: '0.peerjs.com',
-  secure: true,
-  port: 443,
+  debug: 1,
 };
 
 const peer = new Peer(peerConfig);
@@ -46,6 +40,7 @@ function initOnce() {
   initialized = true;
 
   peer.on('open', (id) => {
+    console.log('Conectado ao servidor PeerJS com ID:', id);
     if (peerIdCallback) peerIdCallback(id);
     if (bc) bc.postMessage({ type: 'hello', id });
   });
@@ -76,7 +71,6 @@ export const getPeerId = (callback) => {
 export const connectToPeer = (remotePeerId) => {
   const conn = peer.connect(remotePeerId, { reliable: true });
   
-  // Se em 15 segundos não conectar, aborta
   const timeout = setTimeout(() => {
     if (!conn.open) {
       conn.close();
