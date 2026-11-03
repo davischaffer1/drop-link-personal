@@ -1,7 +1,7 @@
 // src/peerService.js
 import Peer from 'peerjs';
 
-// Configuração para forçar o uso de servidores públicos confiáveis (Google e Twilio)
+// Servidores públicos (STUN e TURN) para furar bloqueios de operadoras e Wi-Fi
 const peerConfig = {
   config: {
     iceServers: [
@@ -10,7 +10,6 @@ const peerConfig = {
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
-      // TURN público de testes (OpenRelay) - ajuda se a rede for restritiva
       {
         urls: 'turn:openrelay.metered.ca:80',
         username: 'openrelayproject',
@@ -23,7 +22,11 @@ const peerConfig = {
       },
     ],
   },
-  debug: 0, // Mude para 1 ou 2 se quiser ver logs no console
+  debug: 0,
+  // 👇 AQUI ESTÁ A MÁGICA: Usando o servidor do PeerJS no Google Cloud (mais rápido e estável)
+  host: '0.peerjs.com',
+  secure: true,
+  port: 443,
 };
 
 const peer = new Peer(peerConfig);
@@ -71,12 +74,12 @@ export const getPeerId = (callback) => {
 };
 
 export const connectToPeer = (remotePeerId) => {
-  // Cria a conexão, com um timeout de 15 segundos
   const conn = peer.connect(remotePeerId, { reliable: true });
   
+  // Se em 15 segundos não conectar, aborta
   const timeout = setTimeout(() => {
     if (!conn.open) {
-      conn.close(); // Força o fechamento se não abrir
+      conn.close();
     }
   }, 15000);
 
