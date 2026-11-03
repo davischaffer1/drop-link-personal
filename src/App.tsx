@@ -31,12 +31,19 @@ function App() {
 
   const peerIdRef = useRef('');
 
-  const { history, addEntry, removeEntry, clearHistory, getPreviewUrl } = useHistory(myPeerId);
+  const {
+    history,
+    addEntry,
+    removeEntry,
+    clearHistory,
+    getPreviewUrl,
+  } = useHistory(myPeerId);
 
   const receivedChunks = useRef([]);
   const fileMetadata = useRef(null);
   const bytesReceived = useRef(0);
 
+  // ---------- Inicialização (roda UMA vez) ----------
   useEffect(() => {
     getPeerId((id) => {
       setMyPeerId(id);
@@ -50,10 +57,13 @@ function App() {
     });
 
     onLocalPeerDiscovered((id) => {
-      setLocalPeers((prev) => (prev.includes(id) || id === myPeerId ? prev : [...prev, id]));
+      setLocalPeers((prev) =>
+        prev.includes(id) || id === myPeerId ? prev : [...prev, id]
+      );
     });
   }, []);
 
+  // ---------- Configuração da conexão ----------
   const setupConnection = (conn) => {
     try {
       conn.removeAllListeners?.('data');
@@ -72,30 +82,21 @@ function App() {
     else {
       conn.on('open', markOpen);
       
-      // 👇 LOG DETALHADO DE REDE (WEBRTC)
+      // Monitor de status da rede WebRTC
       if (conn.peerConnection) {
         const pc = conn.peerConnection;
-        
         pc.oniceconnectionstatechange = () => {
-          console.log(`%c[ICE Status] ${pc.iceConnectionState}`, 'color: orange;');
+          const iceState = pc.iceConnectionState;
+          console.log(`[ICE Status] ${iceState}`);
           
-          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-            console.error('❌ A rede bloqueou a conexão direta (NAT Simétrico ou Firewall).');
-            setStatus('Rede bloqueou a conexão. Tente no mesmo Wi-Fi.');
-          }
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-             // Mostra os IPs locais que o navegador encontrou
-             console.log(`[ICE Candidate] Encontrado IP/Rota: ${event.candidate.candidate.split(' ')[4]}`);
-          }
+          if (iceState === 'checking') setStatus('Testando rotas de rede...');
+          else if (iceState === 'connected' || iceState === 'completed') setStatus('Conectado!');
+          else if (iceState === 'failed' || iceState === 'disconnected') setStatus('Falha na rede. Operadora bloqueou.');
         };
       }
     }
 
     conn.on('data', async (data) => {
-      // ... (o resto do código de recebimento de arquivo continua igual, não precisa mexer)
       if (data.type === 'file-start') {
         fileMetadata.current = { name: data.filename, mime: data.mimeType, size: data.totalSize };
         receivedChunks.current = [];
@@ -158,29 +159,29 @@ function App() {
     });
 
     conn.on('error', (err) => {
-      console.error('❌ Erro grave na conexão do PeerJS:', err);
+      console.error('Erro grave na conexão:', err);
       setIsConnected(false);
       setConnection(null);
-      setStatus('Erro na conexão. Verifique o console.');
+      setStatus('Erro na conexão.');
     });
   };
 
+  // ---------- Conectar ----------
   const handleConnect = (idToConnect) => {
     const target = idToConnect || remotePeerId;
     if (!target) return;
 
     const conn = connectToPeer(target);
     setConnection(conn);
-    setStatus('Conectando...');
+    setStatus('Conectando... (Aguarde)');
 
-    // Se em 15s não abrir (o peerService já fecha a conexão, mas aqui garantimos a UI)
     const timeout = setTimeout(() => {
       if (!conn.open) {
-        setStatus('Tempo esgotado. Verifique a rede.');
+        setStatus('Tempo esgotado. Tente no mesmo Wi-Fi.');
         setIsConnected(false);
         setConnection(null);
       }
-    }, 15000);
+    }, 40000);
 
     conn.on('open', () => {
       clearTimeout(timeout);
@@ -191,7 +192,7 @@ function App() {
     conn.on('error', (err) => {
       clearTimeout(timeout);
       console.error('Erro na conexão:', err);
-      setStatus('Erro ao conectar. Redes diferentes?');
+      setStatus('Erro ao conectar.');
       setIsConnected(false);
       setConnection(null);
     });
@@ -199,6 +200,7 @@ function App() {
     setupConnection(conn);
   };
 
+  // ---------- Envio ----------
   const sendSingleFile = (file) =>
     new Promise((resolve, reject) => {
       if (!connection || !connection.open) {
@@ -291,6 +293,7 @@ function App() {
     setQueueInfo('');
   };
 
+  // ---------- Utilitários ----------
   const copyId = () => {
     if (myPeerId) navigator.clipboard.writeText(myPeerId);
   };
@@ -309,6 +312,7 @@ function App() {
 
   const canSend = isConnected && !isSending;
 
+  // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-sans">
       {showScanner && (
@@ -330,7 +334,7 @@ function App() {
 
         <div className="bg-gray-100 rounded-lg p-3 text-center">
           <p className="text-xs text-gray-600">Status</p>
-          <p className={`font-semibold text-sm ${status.includes('Erro') || status.includes('Tempo') ? 'text-red-600' : 'text-indigo-600'}`}>
+          <p className={`font-semibold text-sm ${status.includes('Erro') || status.includes('Tempo') || status.includes('Falha') ? 'text-red-600' : 'text-indigo-600'}`}>
             {status}
           </p>
         </div>

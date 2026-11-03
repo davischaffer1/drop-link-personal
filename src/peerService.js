@@ -6,8 +6,8 @@ const TURN_USERNAME = 'b242b17e7d5844080bae03c1';
 const TURN_CREDENTIAL = '/yHaPX1MB6uxiq7c';
 
 const peerConfig = {
-  // 👇 Trocamos o servidor de sinalização para um mais rápido e estável
-  host: 'peerjs-server.fly.dev', 
+  // Voltamos para o servidor padrão que sabemos que funciona
+  host: '0.peerjs.com',
   port: 443,
   secure: true,
   path: '/',
@@ -24,7 +24,7 @@ const peerConfig = {
         credential: TURN_CREDENTIAL,
       },
     ],
-    // Obriga o tráfego a passar pelo TURN se a conexão P2P falhar
+    // Força o uso do TURN
     iceTransportPolicy: 'relay',
   },
   debug: 1,
@@ -43,7 +43,7 @@ function initOnce() {
   initialized = true;
 
   peer.on('open', (id) => {
-    console.log('%cConectado ao servidor PeerJS (fly.dev) com ID: ' + id, 'color: green; font-weight: bold;');
+    console.log('%c✅ Conectado ao servidor PeerJS com ID: ' + id, 'color: green; font-weight: bold;');
     if (peerIdCallback) peerIdCallback(id);
     if (bc) bc.postMessage({ type: 'hello', id });
   });
@@ -74,10 +74,10 @@ export const getPeerId = (callback) => {
 export const connectToPeer = (remotePeerId) => {
   const conn = peer.connect(remotePeerId, { reliable: true });
   
-  // Timeout aumentado para 25s para dar tempo do TURN responder
+  // 👇 Aumentamos o timeout para 40 segundos (o TURN pode demorar na primeira vez)
   const timeout = setTimeout(() => {
     if (!conn.open) conn.close();
-  }, 25000);
+  }, 40000);
 
   conn.on('open', () => clearTimeout(timeout));
   return conn;

@@ -54,7 +54,6 @@ export default function QRScanner({ onScan, onClose }) {
           </button>
         </div>
 
-        {/* O container onde a câmera vai aparecer */}
         <div id={containerId} className={`rounded-lg overflow-hidden bg-black ${!hasPermission ? 'hidden' : 'block'}`} style={{ minHeight: '250px' }} />
 
         {!hasPermission && (
