@@ -65,12 +65,37 @@ function App() {
     const markOpen = () => {
       setIsConnected(true);
       setStatus('Conectado!');
+      console.log('%c✅ CONEXÃO ESTABELECIDA COM SUCESSO!', 'color: green; font-weight: bold; font-size: 14px;');
     };
 
     if (conn.open) markOpen();
-    else conn.on('open', markOpen);
+    else {
+      conn.on('open', markOpen);
+      
+      // 👇 LOG DETALHADO DE REDE (WEBRTC)
+      if (conn.peerConnection) {
+        const pc = conn.peerConnection;
+        
+        pc.oniceconnectionstatechange = () => {
+          console.log(`%c[ICE Status] ${pc.iceConnectionState}`, 'color: orange;');
+          
+          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            console.error('❌ A rede bloqueou a conexão direta (NAT Simétrico ou Firewall).');
+            setStatus('Rede bloqueou a conexão. Tente no mesmo Wi-Fi.');
+          }
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+             // Mostra os IPs locais que o navegador encontrou
+             console.log(`[ICE Candidate] Encontrado IP/Rota: ${event.candidate.candidate.split(' ')[4]}`);
+          }
+        };
+      }
+    }
 
     conn.on('data', async (data) => {
+      // ... (o resto do código de recebimento de arquivo continua igual, não precisa mexer)
       if (data.type === 'file-start') {
         fileMetadata.current = { name: data.filename, mime: data.mimeType, size: data.totalSize };
         receivedChunks.current = [];
@@ -133,12 +158,10 @@ function App() {
     });
 
     conn.on('error', (err) => {
-      console.error('Erro na conexão:', err);
+      console.error('❌ Erro grave na conexão do PeerJS:', err);
       setIsConnected(false);
       setConnection(null);
-      setStatus('Erro na conexão. Tente novamente.');
-      // Se der erro na conexão, avisa na tela
-      setTimeout(() => setStatus('Pronto para conectar'), 4000);
+      setStatus('Erro na conexão. Verifique o console.');
     });
   };
 
