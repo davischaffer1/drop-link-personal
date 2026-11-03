@@ -6,55 +6,43 @@ export default function QRScanner({ onScan, onClose }) {
   const containerId = 'qr-scanner-container';
   const scannerRef = useRef(null);
   const [error, setError] = useState('');
-  const [isStarting, setIsStarting] = useState(true);
+  const [hasPermission, setHasPermission] = useState(false);
+
+  const startCamera = async () => {
+    try {
+      setError('');
+      const element = document.getElementById(containerId);
+      if (!element) return;
+
+      const scanner = new Html5Qrcode(containerId);
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          scanner.stop().then(() => {
+            scanner.clear();
+            onScan(decodedText);
+          }).catch(console.error);
+        },
+        () => {}
+      );
+      
+      setHasPermission(true);
+    } catch (err) {
+      console.error('Erro na câmera:', err);
+      setError('Não foi possível acessar a câmera. Verifique se você deu permissão.');
+    }
+  };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const startScanner = async () => {
-      try {
-        const element = document.getElementById(containerId);
-        if (!element) return;
-
-        const scanner = new Html5Qrcode(containerId);
-        scannerRef.current = scanner;
-
-        // Tenta abrir a câmera traseira
-        await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-          (decodedText) => {
-            if (isMounted) {
-              scanner.stop().then(() => {
-                scanner.clear();
-                onScan(decodedText);
-              }).catch(console.error);
-            }
-          },
-          () => {}
-        );
-        
-        if (isMounted) setIsStarting(false);
-      } catch (err) {
-        console.error('Erro na câmera:', err);
-        if (isMounted) {
-          setIsStarting(false);
-          setError('Não foi possível acessar a câmera. Certifique-se de que deu permissão e que a página está em HTTPS.');
-        }
-      }
-    };
-
-    // Dá um tempo para o componente aparecer na tela antes de ligar a câmera
-    const timer = setTimeout(() => startScanner(), 300);
-
     return () => {
-      isMounted = false;
-      clearTimeout(timer);
       if (scannerRef.current) {
         scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(() => {});
       }
     };
-  }, [onScan]);
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center p-4 z-50">
@@ -66,11 +54,17 @@ export default function QRScanner({ onScan, onClose }) {
           </button>
         </div>
 
-        {isStarting && (
-          <p className="text-center text-gray-500 my-4 text-sm">Abrindo câmera...</p>
-        )}
+        {/* O container onde a câmera vai aparecer */}
+        <div id={containerId} className={`rounded-lg overflow-hidden bg-black ${!hasPermission ? 'hidden' : 'block'}`} style={{ minHeight: '250px' }} />
 
-        <div id={containerId} className={`rounded-lg overflow-hidden bg-black ${error ? 'hidden' : 'block'}`} style={{ minHeight: '250px' }} />
+        {!hasPermission && (
+          <button
+            onClick={startCamera}
+            className="w-full py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+          >
+            📷 Ligar Câmera
+          </button>
+        )}
 
         {error && (
           <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mt-2 text-center">

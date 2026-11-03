@@ -1,22 +1,40 @@
 // src/peerService.js
 import Peer from 'peerjs';
 
+// 👇 COLE O SEU USERNAME E CREDENTIAL DO METERED AQUI:
+const TURN_USERNAME = 'b242b17e7d5844080bae03c1';
+const TURN_CREDENTIAL = '/yHaPX1MB6uxiq7c';
+
 const peerConfig = {
-  // 👇 Trocamos o host padrão pelo Cloudflare (mais rápido e não bloqueia celular)
   host: '0.peerjs.com',
   port: 443,
   secure: true,
   path: '/',
-  // Servidores para furar bloqueios de rede (NAT)
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+      // TURN da Metered (Muito mais confiável para 4G/5G)
       {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
+        urls: 'turn:global.relay.metered.ca:80',
+        username: TURN_USERNAME,
+        credential: TURN_CREDENTIAL,
+      },
+      {
+        urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+        username: TURN_USERNAME,
+        credential: TURN_CREDENTIAL,
+      },
+      {
+        urls: 'turn:global.relay.metered.ca:443',
+        username: TURN_USERNAME,
+        credential: TURN_CREDENTIAL,
+      },
+      {
+        urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+        username: TURN_USERNAME,
+        credential: TURN_CREDENTIAL,
       },
     ],
   },
@@ -40,7 +58,7 @@ function initOnce() {
   initialized = true;
 
   peer.on('open', (id) => {
-    console.log('Conectado ao servidor PeerJS com ID:', id);
+    console.log('Conectado ao servidor com ID:', id);
     if (peerIdCallback) peerIdCallback(id);
     if (bc) bc.postMessage({ type: 'hello', id });
   });
@@ -75,7 +93,7 @@ export const connectToPeer = (remotePeerId) => {
     if (!conn.open) {
       conn.close();
     }
-  }, 15000);
+  }, 20000); // Aumentei para 20s, pois o TURN pode demorar um pouco na primeira vez
 
   conn.on('open', () => clearTimeout(timeout));
   
