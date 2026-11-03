@@ -29,21 +29,18 @@ function App() {
   const [currentFile, setCurrentFile] = useState('');
   const [queueInfo, setQueueInfo] = useState('');
 
-  // 👇 Guarda o ID atualizado para as funções de callback não perderem a referência
   const peerIdRef = useRef('');
 
-  const { history, addEntry, removeEntry, clearHistory, getPreviewUrl } =
-    useHistory(myPeerId);
+  const { history, addEntry, removeEntry, clearHistory, getPreviewUrl } = useHistory(myPeerId);
 
   const receivedChunks = useRef([]);
   const fileMetadata = useRef(null);
   const bytesReceived = useRef(0);
 
-  // ---------- Inicialização (roda UMA vez) ----------
   useEffect(() => {
     getPeerId((id) => {
       setMyPeerId(id);
-      peerIdRef.current = id; // Atualiza a ref
+      peerIdRef.current = id;
       setStatus('Pronto para conectar');
     });
 
@@ -53,23 +50,17 @@ function App() {
     });
 
     onLocalPeerDiscovered((id) => {
-      setLocalPeers((prev) =>
-        prev.includes(id) || id === myPeerId ? prev : [...prev, id]
-      );
+      setLocalPeers((prev) => (prev.includes(id) || id === myPeerId ? prev : [...prev, id]));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- Configuração da conexão ----------
   const setupConnection = (conn) => {
     try {
       conn.removeAllListeners?.('data');
       conn.removeAllListeners?.('open');
       conn.removeAllListeners?.('close');
       conn.removeAllListeners?.('error');
-    } catch {
-      /* ignora */
-    }
+    } catch {}
 
     const markOpen = () => {
       setIsConnected(true);
@@ -81,11 +72,7 @@ function App() {
 
     conn.on('data', async (data) => {
       if (data.type === 'file-start') {
-        fileMetadata.current = {
-          name: data.filename,
-          mime: data.mimeType,
-          size: data.totalSize,
-        };
+        fileMetadata.current = { name: data.filename, mime: data.mimeType, size: data.totalSize };
         receivedChunks.current = [];
         bytesReceived.current = 0;
         setProgress(0);
@@ -95,20 +82,15 @@ function App() {
         receivedChunks.current.push(data.data);
         bytesReceived.current += data.data.byteLength;
         if (fileMetadata.current) {
-          const pct = Math.round(
-            (bytesReceived.current / fileMetadata.current.size) * 100
-          );
+          const pct = Math.round((bytesReceived.current / fileMetadata.current.size) * 100);
           setProgress(Math.min(pct, 99));
         }
       } else if (data.type === 'file-end') {
         if (!fileMetadata.current) return;
 
         const meta = fileMetadata.current;
-        const blob = new Blob(receivedChunks.current, {
-          type: meta.mime || 'application/octet-stream',
-        });
+        const blob = new Blob(receivedChunks.current, { type: meta.mime || 'application/octet-stream' });
 
-        // Download automático
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -119,14 +101,9 @@ function App() {
         URL.revokeObjectURL(url);
 
         let thumbnail = null;
-        if (meta.mime?.startsWith('image/')) {
-          thumbnail = await generateImageThumbnail(blob);
-        } else if (meta.mime === 'application/pdf') {
-          thumbnail = await generatePdfThumbnail(blob);
-        }
+        if (meta.mime?.startsWith('image/')) thumbnail = await generateImageThumbnail(blob);
+        else if (meta.mime === 'application/pdf') thumbnail = await generatePdfThumbnail(blob);
 
-        // 👇 CORREÇÃO CRÍTICA: Passando o ID do peer de forma explícita e garantida
-        // para o addEntry não falhar caso o React ainda não tenha renderizado o estado.
         await addEntry({
           filename: meta.name,
           size: meta.size,
@@ -139,7 +116,6 @@ function App() {
         setProgress(100);
         setStatus('Arquivo recebido!');
         setCurrentFile('');
-
         receivedChunks.current = [];
         fileMetadata.current = null;
         bytesReceived.current = 0;
@@ -158,11 +134,14 @@ function App() {
 
     conn.on('error', (err) => {
       console.error('Erro na conexão:', err);
-      setStatus('Erro na conexão');
+      setIsConnected(false);
+      setConnection(null);
+      setStatus('Erro na conexão. Tente novamente.');
+      // Se der erro na conexão, avisa na tela
+      setTimeout(() => setStatus('Pronto para conectar'), 4000);
     });
   };
 
-  // ---------- Conectar ----------
   const handleConnect = (idToConnect) => {
     const target = idToConnect || remotePeerId;
     if (!target) return;
@@ -171,15 +150,32 @@ function App() {
     setConnection(conn);
     setStatus('Conectando...');
 
+    // Se em 15s não abrir (o peerService já fecha a conexão, mas aqui garantimos a UI)
+    const timeout = setTimeout(() => {
+      if (!conn.open) {
+        setStatus('Tempo esgotado. Verifique a rede.');
+        setIsConnected(false);
+        setConnection(null);
+      }
+    }, 15000);
+
+    conn.on('open', () => {
+      clearTimeout(timeout);
+      setIsConnected(true);
+      setStatus('Conectado!');
+    });
+
     conn.on('error', (err) => {
+      clearTimeout(timeout);
       console.error('Erro na conexão:', err);
-      setStatus('Erro na conexão');
+      setStatus('Erro ao conectar. Redes diferentes?');
+      setIsConnected(false);
+      setConnection(null);
     });
 
     setupConnection(conn);
   };
 
-  // ---------- Envio ----------
   const sendSingleFile = (file) =>
     new Promise((resolve, reject) => {
       if (!connection || !connection.open) {
@@ -197,7 +193,6 @@ function App() {
       });
 
       let offset = 0;
-
       const readSlice = () => {
         if (!connection.open) {
           reject(new Error('Conexão fechada durante envio'));
@@ -248,11 +243,8 @@ function App() {
         await sendSingleFile(file);
 
         let thumbnail = null;
-        if (file.type?.startsWith('image/')) {
-          thumbnail = await generateImageThumbnail(file);
-        } else if (file.type === 'application/pdf') {
-          thumbnail = await generatePdfThumbnail(file);
-        }
+        if (file.type?.startsWith('image/')) thumbnail = await generateImageThumbnail(file);
+        else if (file.type === 'application/pdf') thumbnail = await generatePdfThumbnail(file);
 
         await addEntry({
           filename: file.name,
@@ -276,7 +268,6 @@ function App() {
     setQueueInfo('');
   };
 
-  // ---------- Utilitários ----------
   const copyId = () => {
     if (myPeerId) navigator.clipboard.writeText(myPeerId);
   };
@@ -295,7 +286,6 @@ function App() {
 
   const canSend = isConnected && !isSending;
 
-  // ---------- Render ----------
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-sans">
       {showScanner && (
@@ -312,22 +302,20 @@ function App() {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-5">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-800">DropLink</h1>
-          <p className="text-gray-500 mt-1 text-sm">
-            Transferência direta e segura
-          </p>
+          <p className="text-gray-500 mt-1 text-sm">Transferência direta e segura</p>
         </div>
 
         <div className="bg-gray-100 rounded-lg p-3 text-center">
           <p className="text-xs text-gray-600">Status</p>
-          <p className="font-semibold text-indigo-600 text-sm">{status}</p>
+          <p className={`font-semibold text-sm ${status.includes('Erro') || status.includes('Tempo') ? 'text-red-600' : 'text-indigo-600'}`}>
+            {status}
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3 items-center">
           <QRCodeDisplay value={myPeerId} />
           <div className="space-y-2">
-            <label className="block text-xs font-medium text-gray-700">
-              Seu ID
-            </label>
+            <label className="block text-xs font-medium text-gray-700">Seu ID</label>
             <input
               type="text"
               readOnly
@@ -354,9 +342,7 @@ function App() {
 
         {localPeers.length > 0 && !isConnected && (
           <div>
-            <p className="text-xs font-medium text-gray-700 mb-1">
-              Encontrados neste navegador
-            </p>
+            <p className="text-xs font-medium text-gray-700 mb-1">Encontrados neste navegador</p>
             <div className="flex flex-wrap gap-2">
               {localPeers.map((id) => (
                 <button
@@ -372,9 +358,7 @@ function App() {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Conectar a um Peer
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Conectar a um Peer</label>
           <div className="flex items-center space-x-2">
             <input
               type="text"
@@ -401,9 +385,7 @@ function App() {
         {progress > 0 && (
           <div>
             <div className="flex justify-between text-sm text-gray-600 mb-1">
-              <span className="truncate max-w-[60%]">
-                {currentFile || 'Progresso'}
-              </span>
+              <span className="truncate max-w-[60%]">{currentFile || 'Progresso'}</span>
               <span>{progress}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5">
@@ -412,9 +394,7 @@ function App() {
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
-            {queueInfo && (
-              <p className="text-xs text-gray-500 mt-1">{queueInfo}</p>
-            )}
+            {queueInfo && <p className="text-xs text-gray-500 mt-1">{queueInfo}</p>}
           </div>
         )}
 

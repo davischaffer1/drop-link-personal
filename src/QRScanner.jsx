@@ -6,67 +6,84 @@ export default function QRScanner({ onScan, onClose }) {
   const containerId = 'qr-scanner-container';
   const scannerRef = useRef(null);
   const [error, setError] = useState('');
+  const [isStarting, setIsStarting] = useState(true);
 
   useEffect(() => {
-    const start = async () => {
+    let isMounted = true;
+
+    const startScanner = async () => {
       try {
+        // Garante que a div exista antes de tentar usar
+        const element = document.getElementById(containerId);
+        if (!element) return;
+
         const scanner = new Html5Qrcode(containerId);
         scannerRef.current = scanner;
 
         await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 220, height: 220 } },
+          { facingMode: 'environment' }, // Força a câmera traseira
+          { fps: 10, qrbox: { width: 250, height: 250 } },
           (decodedText) => {
-            // Sucesso → para e chama callback
-            scanner.stop().then(() => {
-              scanner.clear();
-              onScan(decodedText);
-            });
+            // Quando lê com sucesso
+            if (isMounted) {
+              scanner.stop().then(() => {
+                scanner.clear();
+                onScan(decodedText);
+              }).catch(console.error);
+            }
           },
           () => {
-            /* ignora erros de leitura entre frames */
+            // Ignora falhas de leitura frame a frame
           }
         );
+        
+        if (isMounted) setIsStarting(false);
       } catch (err) {
-        console.error(err);
-        setError(
-          'Não foi possível acessar a câmera. Verifique as permissões e use HTTPS.'
-        );
+        console.error('Erro na câmera:', err);
+        if (isMounted) {
+          setIsStarting(false);
+          setError('Não foi possível acessar a câmera. Verifique se você deu permissão no navegador e se está usando HTTPS.');
+        }
       }
     };
 
-    start();
+    // Pequeno delay para garantir que a div foi montada no DOM
+    const timer = setTimeout(() => startScanner(), 300);
 
     return () => {
-      const scanner = scannerRef.current;
-      if (scanner) {
-        scanner
-          .stop()
-          .then(() => scanner.clear())
-          .catch(() => {});
+      isMounted = false;
+      clearTimeout(timer);
+      if (scannerRef.current) {
+        scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(() => {});
       }
     };
   }, [onScan]);
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl p-4 w-full max-w-sm">
+    <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl p-4 w-full max-w-sm flex flex-col">
         <div className="flex justify-between items-center mb-3">
           <h2 className="font-semibold text-gray-800">Escanear QR Code</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-800 text-xl leading-none"
-          >
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl leading-none font-bold">
             ×
           </button>
         </div>
 
-        <div id={containerId} className="rounded-lg overflow-hidden" />
+        {isStarting && (
+          <p className="text-center text-gray-500 my-4 text-sm">Iniciando câmera...</p>
+        )}
 
-        {error && <p className="text-red-600 text-sm mt-3">{error}</p>}
+        {/* O container da câmera sempre existe no DOM, mas é escondido se der erro */}
+        <div id={containerId} className={`rounded-lg overflow-hidden bg-black ${error ? 'hidden' : 'block'}`} style={{ minHeight: '250px' }} />
 
-        <p className="text-xs text-gray-500 mt-3 text-center">
-          Aponte a câmera para o QR Code do outro dispositivo.
+        {error && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mt-2 text-center">
+            {error}
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500 mt-4 text-center">
+          Aponte a câmera para o QR Code no PC.
         </p>
       </div>
     </div>

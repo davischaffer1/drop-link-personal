@@ -1,14 +1,38 @@
 // src/peerService.js
 import Peer from 'peerjs';
 
-const peer = new Peer();
+// Configuração para forçar o uso de servidores públicos confiáveis (Google e Twilio)
+const peerConfig = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      // TURN público de testes (OpenRelay) - ajuda se a rede for restritiva
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+    ],
+  },
+  debug: 0, // Mude para 1 ou 2 se quiser ver logs no console
+};
+
+const peer = new Peer(peerConfig);
 
 const bc =
   typeof BroadcastChannel !== 'undefined'
     ? new BroadcastChannel('droplink-lan')
     : null;
 
-// Garante que os listeners sejam registrados UMA vez só
 let peerIdCallback = null;
 let incomingConnectionCallback = null;
 let localPeerCallback = null;
@@ -34,16 +58,32 @@ function initOnce() {
       }
     };
   }
+
+  peer.on('error', (err) => {
+    console.warn('PeerJS error:', err);
+  });
 }
 
 export const getPeerId = (callback) => {
   peerIdCallback = callback;
   initOnce();
-  // Se o peer já abriu antes do callback ser registrado, avisa na hora
   if (peer.id) callback(peer.id);
 };
 
-export const connectToPeer = (remotePeerId) => peer.connect(remotePeerId);
+export const connectToPeer = (remotePeerId) => {
+  // Cria a conexão, com um timeout de 15 segundos
+  const conn = peer.connect(remotePeerId, { reliable: true });
+  
+  const timeout = setTimeout(() => {
+    if (!conn.open) {
+      conn.close(); // Força o fechamento se não abrir
+    }
+  }, 15000);
+
+  conn.on('open', () => clearTimeout(timeout));
+  
+  return conn;
+};
 
 export const onIncomingConnection = (callback) => {
   incomingConnectionCallback = callback;
